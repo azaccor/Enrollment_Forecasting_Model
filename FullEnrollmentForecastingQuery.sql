@@ -269,7 +269,7 @@ group by DATEFROMPARTS(year(b.enrolldate), month(b.enrolldate), 1)
 
 SELECT MONTH(b.EnrollDate) AS 'EnrMo'
 , YEAR(b.EnrollDate)-2015 AS 'EnrYr'
-, IIF(ptv.ActiveTruDat = 0, 998, ISNULL(cd.TrueCreditPartner, 999)) AS 'PartnerId'
+, cd.TrueCreditPartner AS 'PartnerId'
 , TPP.TPPHosps AS 'TPPHospitals'
 , TREX.trxhosps AS 'TrexHospitals'
 , TPP.ActiveHosps AS 'ActiveHosps'
@@ -281,14 +281,15 @@ SELECT MONTH(b.EnrollDate) AS 'EnrMo'
 FROM fct.EnrTableV b with (nolock)
 LEFT JOIN sse.TPCreditDriverV cd with (nolock) on (b.ppid = cd.ppid)
 LEFT JOIN dw.PartnerTraitV ptv with (nolock) on (cd.TrueCreditPartner = ptv.PartnerID)
-INNER JOIN #TPPFinal TPP on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = TPP.datekey AND cd.TrueCreditPartner = TPP.PartnerId)
-INNER JOIN #TREXFinal TREX on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = TREX.datekey AND cd.TrueCreditPartner = TREX.PartnerId)
+LEFT JOIN #TPPFinal TPP on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = TPP.datekey AND cd.TrueCreditPartner = TPP.PartnerId)
+LEFT JOIN #TREXFinal TREX on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = TREX.datekey AND cd.TrueCreditPartner = TREX.PartnerId)
 LEFT JOIN #DTCFinal DTC  on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = DTC.EnrMo AND cd.TrueCreditPartner = DTC.PartnerId)
 WHERE b.EnrollDate >= '1/1/2016'
 AND b.EnrollDate <= GETDATE()
+AND TPP.TPPHosps IS NOT NULL
 GROUP BY MONTH(b.EnrollDate)
 , YEAR(b.EnrollDate)-2015
-, IIF(ptv.ActiveTruDat = 0, 998, ISNULL(cd.TrueCreditPartner, 999))
+, cd.TrueCreditPartner
 , TPP.TPPHosps
 , TREX.trxhosps
 , TPP.ActiveHosps
@@ -296,6 +297,6 @@ GROUP BY MONTH(b.EnrollDate)
 , IIF(TREX.ActiveHosps = 0, 0, CAST(TREX.trxhosps AS DECIMAL(5))/CAST(TREX.ActiveHosps AS DECIMAL(5)))
 , ISNULL(DTC.RadioFlag, 0)
 , ISNULL(DTC.TVFlag, 0)
-ORDER BY IIF(ptv.ActiveTruDat = 0, 998, ISNULL(cd.TrueCreditPartner, 999))
+ORDER BY cd.TrueCreditPartner
 , YEAR(b.EnrollDate)-2015
 , MONTH(b.EnrollDate)
