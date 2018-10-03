@@ -3,7 +3,7 @@
 
 # ## Predicting Conversions from Web Quotes
 
-# In[31]:
+# In[1]:
 
 import numpy as np
 import pandas as pd
@@ -22,7 +22,7 @@ from statsmodels.genmod.families import Poisson
 
 # Import the data from SQL Server
 
-# In[8]:
+# In[2]:
 
 TempTPP1 = """
 --------------A clinic's Enrs in a Mo  -----------------
@@ -36,7 +36,7 @@ select
 into ##Enrs1
 from fct.enrtablev b with (nolock)
 where b.clinicID is not null and b.enrolldate is not null and b.paidbycorp = 0
-and b.EnrollDate >= '9/1/2015' -- 3 months preceding date of interest
+and b.EnrollDate >= '5/1/2015' -- 3 months preceding date of interest
 group by
     dateadd(d,-day(b.enrolldateonly)+1,b.enrolldateonly)
 ,   b.clinicID
@@ -53,7 +53,7 @@ select
 into ##TPPHosps
 from sse.clinictrait ct
 cross apply dim.CalendarV cv
-where cv.datekey >= '9/1/2015' and cv.datekey <= getdate() -- 3 months preceding date of interest
+where cv.datekey >= '5/1/2015' and cv.datekey <= getdate() -- 3 months preceding date of interest
 AND ct.SignUpImplementationDate IS NOT NULL
 --order by ct.ClinicId, cv.datekey
 """
@@ -68,7 +68,7 @@ select
 into ##MonthBase1
 from dim.calendarv cv with (nolock)
 	cross apply fct.enrtablev b with (nolock)
-where cv.datekey >= '1/1/2016' and cv.datekey <= getdate()
+where cv.datekey >= '5/1/2015' and cv.datekey <= getdate()
 """
 
 TempTPP4 = """
@@ -154,7 +154,7 @@ select
 into ##Enrs2
 from fct.enrtablev b with (nolock)
 where b.clinicID is not null and b.enrolldate is not null and b.paidbycorp = 0
-and b.EnrollDate >= '9/1/2015' -- 3 months preceding date of interest
+and b.EnrollDate >= '5/1/2015' -- 3 months preceding date of interest
 group by
     dateadd(d,-day(b.enrolldateonly)+1,b.enrolldateonly)
 ,   b.clinicID
@@ -171,7 +171,7 @@ select
 into ##trxhosps
 from sse.clinictrait ct
 cross apply dim.CalendarV cv
-where cv.datekey >= '9/1/2015' and cv.datekey <= getdate() -- 3 months preceding date of interest
+where cv.datekey >= '5/1/2015' and cv.datekey <= getdate() -- 3 months preceding date of interest
 AND ct.TrexLiveDate IS NOT NULL
 --order by ct.ClinicId, cv.datekey
 """
@@ -186,7 +186,7 @@ select
 into ##MonthBase2
 from dim.calendarv cv with (nolock)
 	cross apply fct.enrtablev b with (nolock)
-where cv.datekey >= '1/1/2016' and cv.datekey <= getdate()
+where cv.datekey >= '5/1/2015' and cv.datekey <= getdate()
 """
 
 TempTREX4 = """
@@ -306,8 +306,8 @@ LEFT JOIN dw.PartnerTraitV ptv with (nolock) on (cd.TrueCreditPartner = ptv.Part
 LEFT JOIN ##TPPFinal TPP on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = TPP.datekey AND cd.TrueCreditPartner = TPP.PartnerId)
 LEFT JOIN ##TREXFinal TREX on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = TREX.datekey AND cd.TrueCreditPartner = TREX.PartnerId)
 LEFT JOIN ##DTCFinal DTC  on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = DTC.EnrMo AND cd.TrueCreditPartner = DTC.PartnerId)
-WHERE b.EnrollDate >= '1/1/2016'
-AND b.EnrollDate <= GETDATE()
+WHERE b.EnrollDate >= '9/1/2015'
+AND b.EnrollDate < '9/1/2018'
 AND TPP.TPPHosps IS NOT NULL
 GROUP BY MONTH(b.EnrollDate)
 , YEAR(b.EnrollDate)-2015
@@ -350,24 +350,29 @@ df = pd.read_sql(query,connection)
 connection.close()
 
 
-# In[9]:
+# In[3]:
 
 df.head()
 
 
+# In[4]:
+
+df.to_csv('\\corp.vetinsurance.com\analytics\Projects\SalesMarketing\Enrollment Forecasting\Main_df.csv')
+
+
 # Inspect dataframe
 
-# In[10]:
+# In[5]:
 
 df.shape
 
 
-# In[11]:
+# In[6]:
 
 df.dtypes
 
 
-# In[12]:
+# In[7]:
 
 ## Create a training set and a testing set. Relative sizes to change later maybe.
 
@@ -375,7 +380,7 @@ train = df.sample(frac=0.8, random_state=123)
 test = df.loc[~df.index.isin(train.index), :]
 
 
-# In[13]:
+# In[8]:
 
 ## Break off the explanatory variables (Might not need this for GLM)
 
@@ -387,19 +392,19 @@ y_test = test['Enrolls']
 x_train.head(3)
 
 
-# In[14]:
+# In[9]:
 
 train.shape
 
 
-# In[15]:
+# In[10]:
 
 # Checking for nulls here, forced to the average of a policyholder if NaN in query
 
 np.any(np.isnan(train['TVFlag']))
 
 
-# In[16]:
+# In[11]:
 
 # Checking for nonfinite values here, similar to above
 
@@ -408,7 +413,7 @@ np.all(np.isfinite(train['TVFlag']))
 
 # Since we have categorical variables - PartnerId and EnrMo - that haven't been converted to binary yet, we need to encode these as n-1 dummy variables in order to put them in our model and avoid perfect multicollinearity. Despite being ints, they aren't ordinal.
 
-# In[17]:
+# In[12]:
 
 # Everything will be relative to January
 
@@ -417,7 +422,7 @@ df_enrMo = df_enrMo.rename(index = str, columns={2:"Feb", 3:"Mar", 4:"Apr", 5:"M
                                                 8:"Aug", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dec"})
 
 
-# In[18]:
+# In[13]:
 
 # Everything will be relative to Drew Bowles (PartnerId = 4)
 
@@ -437,11 +442,11 @@ df_partners = df_partners.rename(index = str, columns={12:"Skedden", 13:"Rawling
                                                        301:"Flessatti2", 302:"Schneider2", 303:"Restuccia", 309:"AtlantaW",
                                                        310:"AtlantaE", 311:"Halsall", 312:"Proksel", 313:"IslandDR",
                                                        314:"JerseyCF", 317:"Medearis", 318:"Warner", 319:"Klassen2",
-                                                       321:"AnHunter", 322:"Henry", 323:"McNicol", 324:"TucsonKB", 325:"Doran",
-                                                       })
+                                                       321:"AnHunter", 322:"Henry", 323:"McNicol", 324:"TucsonKB",
+                                                       325:"Doran", 326:"Dempsey"})
 
 
-# In[19]:
+# In[14]:
 
 # Index type must be converted to int for the following concatenation.
 
@@ -451,7 +456,7 @@ df_partners = df_partners.astype(int)
 df_partners.index = df_partners.index.astype(int)
 
 
-# In[20]:
+# In[15]:
 
 # Concatenate the booleans, drop the int versions, and add a contant.
 
@@ -461,7 +466,7 @@ new_x = smt.add_constant(new_x, prepend = True, has_constant = 'raise')
 new_x.head()
 
 
-# In[35]:
+# In[16]:
 
 # Let's actually look at the distribution of monthly Enrollments by TP
 get_ipython().magic('matplotlib inline')
@@ -475,18 +480,18 @@ plt.show()
 # #### First Attempt - Poisson Regression
 # We utilize a Poisson regression here because our independent variable, Enrolls, is a count with a relatively small range. Since the distribution of the error terms will therefore not be independent and identically distributed we do not use OLS.
 
-# In[24]:
+# In[17]:
 
 poisson = sm.GLM(y_train, new_x, family = Poisson()).fit()
 # poisson.summary()
 
 
-# In[25]:
+# In[18]:
 
 y_train.mean()
 
 
-# In[26]:
+# In[19]:
 
 y_train.var()
 
@@ -494,24 +499,68 @@ y_train.var()
 # #### Second Attempt - Negative Binomial
 # Shouldn't use Poisson, because the variance does not equal the mean. Trying a Negative Binomial instead.
 
-# In[27]:
+# In[20]:
 
 negbinomial = sm.GLM(y_train, new_x, family = sm.families.NegativeBinomial()).fit()
 negbinomial.summary()
 
 
-# In[40]:
+# In[85]:
 
-sns.pairplot(train, vars=["TPPHospitals", "TrexHospitals", "ActiveHosps", "TPPRatio", "TrexRatio", "Enrolls"])
+## This cell prints the summary to a version that can be easily copied into our existing Excel document for wider audience.
+## Only run if necessary.
+
+#coef_df = negbinomial.summary().as_csv()
+#coef_df.split('\n')
 
 
-# In[41]:
+# In[64]:
+
+negbinomial.get_prediction()
+
+
+# In[22]:
+
+dir(negbinomial)
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+
+
+
+# In[ ]:
+
+
+
+
+# In[23]:
+
+sns.pairplot(train, vars=["EnrYr", "TPPHospitals", "TrexHospitals", "ActiveHosps", "TPPRatio", "TrexRatio", "Enrolls"])
+
+
+# In[21]:
 
 sns.pairplot(train, size=4, hue = "TVFlag", 
              vars=["TPPHospitals", "TrexHospitals", "ActiveHosps", "TPPRatio", "TrexRatio", "Enrolls"])
 
 
-# In[42]:
+# In[22]:
 
 sns.pairplot(train, size=4, hue = "RadioFlag", 
             vars=["TPPHospitals", "TrexHospitals", "ActiveHosps", "TPPRatio", "TrexRatio", "Enrolls"])
