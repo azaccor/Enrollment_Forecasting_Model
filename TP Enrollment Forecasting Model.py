@@ -3,7 +3,7 @@
 
 # ## Predicting Conversions from Web Quotes
 
-# In[43]:
+# In[61]:
 
 
 import numpy as np
@@ -14,15 +14,16 @@ import random
 
 from sqlalchemy import create_engine
 import pyodbc
+import urllib
 
 import statsmodels.api as sm
 import statsmodels.tools.tools as smt
-from statsmodels.genmod.families import Poisson
+from statsmodels.genmod.families import NegativeBinomial
 
 
 # Import the data from SQL Server
 
-# In[5]:
+# In[27]:
 
 
 TempTPP1 = """
@@ -37,7 +38,7 @@ select
 into ##Enrs1
 from fct.enrtablev b with (nolock)
 where b.clinicID is not null and b.enrolldate is not null and b.paidbycorp = 0
-and b.EnrollDate >= '9/1/2015' -- 3 months preceding date of interest
+and b.EnrollDate >= '6/1/2015' -- 3 months preceding date of interest
 group by
     dateadd(d,-day(b.enrolldateonly)+1,b.enrolldateonly)
 ,   b.clinicID
@@ -54,7 +55,7 @@ select
 into ##TPPHosps
 from sse.clinictrait ct
 cross apply dim.CalendarV cv
-where cv.datekey >= '9/1/2015' and cv.datekey <= getdate() -- 3 months preceding date of interest
+where cv.datekey >= '6/1/2015' and cv.datekey <= getdate() -- 3 months preceding date of interest
 AND ct.SignUpImplementationDate IS NOT NULL
 --order by ct.ClinicId, cv.datekey
 """
@@ -69,7 +70,7 @@ select
 into ##MonthBase1
 from dim.calendarv cv with (nolock)
 	cross apply fct.enrtablev b with (nolock)
-where cv.datekey >= '1/1/2016' and cv.datekey <= getdate()
+where cv.datekey >= '6/1/2015' and cv.datekey <= getdate()
 """
 
 TempTPP4 = """
@@ -155,7 +156,7 @@ select
 into ##Enrs2
 from fct.enrtablev b with (nolock)
 where b.clinicID is not null and b.enrolldate is not null and b.paidbycorp = 0
-and b.EnrollDate >= '9/1/2015' -- 3 months preceding date of interest
+and b.EnrollDate >= '6/1/2015' -- 3 months preceding date of interest
 group by
     dateadd(d,-day(b.enrolldateonly)+1,b.enrolldateonly)
 ,   b.clinicID
@@ -172,7 +173,7 @@ select
 into ##trxhosps
 from sse.clinictrait ct
 cross apply dim.CalendarV cv
-where cv.datekey >= '9/1/2015' and cv.datekey <= getdate() -- 3 months preceding date of interest
+where cv.datekey >= '6/1/2015' and cv.datekey <= getdate() -- 3 months preceding date of interest
 AND ct.TrexLiveDate IS NOT NULL
 --order by ct.ClinicId, cv.datekey
 """
@@ -187,7 +188,7 @@ select
 into ##MonthBase2
 from dim.calendarv cv with (nolock)
 	cross apply fct.enrtablev b with (nolock)
-where cv.datekey >= '1/1/2016' and cv.datekey <= getdate()
+where cv.datekey >= '6/1/2015' and cv.datekey <= getdate()
 """
 
 TempTREX4 = """
@@ -283,7 +284,7 @@ from fct.EnrTableV b with (nolock)
 left join dw.PartnerTraitV ptv with (nolock) on (b.partnerid = ptv.partnerid)
 left join sse.DTCCampaigns dtc1 with (nolock) on (b.PostalCode = dtc1.zipcode)
 left join sse.DTCCampaigns dtc2 with (nolock) on (LEFT(b.PostalCode, 3) = dtc2.FSA)
-where b.EnrollDate >= '1/1/2016'
+where b.EnrollDate >= '10/1/2015'
 group by DATEFROMPARTS(year(b.enrolldate), month(b.enrolldate), 1)
 , IIF(ptv.ActiveTruDat = 0, 998, ISNULL(b.partnerid, 999))
 """
@@ -291,7 +292,7 @@ group by DATEFROMPARTS(year(b.enrolldate), month(b.enrolldate), 1)
 query = """
 ------------FINAL SELECT------------
 SELECT MONTH(b.EnrollDate) AS 'EnrMo'
-, YEAR(b.EnrollDate)-2015 AS 'EnrYr'
+, YEAR(b.EnrollDate)-2014 AS 'EnrYr'
 , cd.TrueCreditPartner AS 'PartnerId'
 , TPP.TPPHosps AS 'TPPHospitals'
 , TREX.trxhosps AS 'TrexHospitals'
@@ -307,11 +308,11 @@ LEFT JOIN dw.PartnerTraitV ptv with (nolock) on (cd.TrueCreditPartner = ptv.Part
 LEFT JOIN ##TPPFinal TPP on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = TPP.datekey AND cd.TrueCreditPartner = TPP.PartnerId)
 LEFT JOIN ##TREXFinal TREX on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = TREX.datekey AND cd.TrueCreditPartner = TREX.PartnerId)
 LEFT JOIN ##DTCFinal DTC  on (DATEFROMPARTS(YEAR(b.enrolldate), MONTH(b.enrolldate), 1) = DTC.EnrMo AND cd.TrueCreditPartner = DTC.PartnerId)
-WHERE b.EnrollDate >= '1/1/2016'
-AND b.EnrollDate <= GETDATE()
+WHERE b.EnrollDate >= '10/1/2015'
+AND b.EnrollDate < '10/1/2018'
 AND TPP.TPPHosps IS NOT NULL
 GROUP BY MONTH(b.EnrollDate)
-, YEAR(b.EnrollDate)-2015
+, YEAR(b.EnrollDate)-2014
 , cd.TrueCreditPartner
 , TPP.TPPHosps
 , TREX.trxhosps
@@ -321,13 +322,14 @@ GROUP BY MONTH(b.EnrollDate)
 , ISNULL(DTC.RadioFlag, 0)
 , ISNULL(DTC.TVFlag, 0)
 ORDER BY cd.TrueCreditPartner
-, YEAR(b.EnrollDate)-2015
+, YEAR(b.EnrollDate)-2014
 , MONTH(b.EnrollDate)
 """
 
 
 # Connect to and query data warehouse
 engine = create_engine('mssql+pyodbc://sav-dwh1')
+
 connection = engine.connect()
 connection.execute(TempTPP1)
 connection.execute(TempTPP2)
@@ -348,7 +350,7 @@ df = pd.read_sql(query,connection)
 connection.close()
 
 
-# In[6]:
+# In[28]:
 
 
 df.head()
@@ -356,31 +358,31 @@ df.head()
 
 # Inspect dataframe
 
-# In[7]:
+# In[29]:
 
 
 df.shape
 
 
-# In[8]:
+# In[30]:
 
 
 df.dtypes
 
 
-# In[9]:
+# In[46]:
 
 
 ## Create a training set and a testing set. Relative sizes to change later maybe.
 
-train = df.sample(frac=0.8, random_state=123)
+train = df.sample(frac=0.75, random_state=99)
 test = df.loc[~df.index.isin(train.index), :]
 
 
-# In[10]:
+# In[47]:
 
 
-## Break off the explanatory variables (Might not need this for GLM)
+## Break off the explanatory variables from the independent variable.
 
 x_train = train[['PartnerId', 'EnrMo', 'EnrYr', 'ActiveHosps', 'TPPRatio', 'TrexRatio', 'RadioFlag', 'TVFlag']]
 y_train = train['Enrolls']
@@ -390,13 +392,13 @@ y_test = test['Enrolls']
 x_train.head(3)
 
 
-# In[11]:
+# In[48]:
 
 
 train.shape
 
 
-# In[12]:
+# In[49]:
 
 
 # Checking for nulls here, forced to the average of a policyholder if NaN in query
@@ -404,7 +406,7 @@ train.shape
 np.any(np.isnan(train['TVFlag']))
 
 
-# In[13]:
+# In[50]:
 
 
 # Checking for nonfinite values here, similar to above
@@ -414,7 +416,7 @@ np.all(np.isfinite(train['TVFlag']))
 
 # Since we have categorical variables - PartnerId and EnrMo - that haven't been converted to binary yet, we need to encode these as n-1 dummy variables in order to put them in our model and avoid perfect multicollinearity. Despite being ints, they aren't ordinal.
 
-# In[38]:
+# In[51]:
 
 
 # Everything will be relative to January
@@ -424,7 +426,7 @@ df_enrMo = df_enrMo.rename(index = str, columns={2:"Feb", 3:"Mar", 4:"Apr", 5:"M
                                                 8:"Aug", 9:"Sep", 10:"Oct", 11:"Nov", 12:"Dec"})
 
 
-# In[39]:
+# In[52]:
 
 
 # Everything will be relative to Drew Bowles (PartnerId = 4)
@@ -445,11 +447,11 @@ df_partners = df_partners.rename(index = str, columns={12:"Skedden", 13:"Rawling
                                                        301:"Flessatti2", 302:"Schneider2", 303:"Restuccia", 309:"AtlantaW",
                                                        310:"AtlantaE", 311:"Halsall", 312:"Proksel", 313:"IslandDR",
                                                        314:"JerseyCF", 317:"Medearis", 318:"Warner", 319:"Klassen2",
-                                                       321:"AnHunter", 322:"Henry", 323:"McNicol", 324:"TucsonKB", 325:"Doran",
-                                                       })
+                                                       321:"AnHunter", 322:"Henry", 323:"McNicol", 324:"TucsonKB",
+                                                       325:"Doran", 326:"Dempsey"})
 
 
-# In[40]:
+# In[53]:
 
 
 # Index type must be converted to int for the following concatenation.
@@ -460,7 +462,7 @@ df_partners = df_partners.astype(int)
 df_partners.index = df_partners.index.astype(int)
 
 
-# In[44]:
+# In[54]:
 
 
 # Concatenate the booleans, drop the int versions, and add a contant.
@@ -471,78 +473,101 @@ new_x = smt.add_constant(new_x, prepend = True, has_constant = 'raise')
 new_x.head()
 
 
+# In[55]:
+
+
+# Let's actually look at the distribution of monthly Enrollments by TP
+get_ipython().run_line_magic('matplotlib', 'inline')
+
+y = train['Enrolls']
+
+sns.distplot(y)
+plt.show()
+
+
 # #### First Attempt - Poisson Regression
 # We utilize a Poisson regression here because our independent variable, Enrolls, is a count with a relatively small range. Since the distribution of the error terms will therefore not be independent and identically distributed we do not use OLS.
 
-# In[53]:
+# In[56]:
 
 
 poisson = sm.GLM(y_train, new_x, family = Poisson()).fit()
-poisson.summary()
+# poisson.summary()
 
 
-# In[59]:
+# In[57]:
 
 
 y_train.mean()
 
 
-# In[62]:
+# In[58]:
 
 
 y_train.var()
 
 
+# In[64]:
+
+
+alpha = (y_train.var()-y_train.mean())/(y_train.mean()*y_train.mean())
+alpha
+
+
 # #### Second Attempt - Negative Binomial
 # Shouldn't use Poisson, because the variance does not equal the mean. Trying a Negative Binomial instead.
 
-# In[63]:
+# In[62]:
 
 
-negbinomial = sm.GLM(y_train, new_x, family = sm.families.NegativeBinomial()).fit()
+negbinomial = sm.GLM(y_train, new_x, family = sm.families.NegativeBinomial(alpha = alpha)).fit()
 negbinomial.summary()
 
 
-# In[68]:
+# In[85]:
 
 
-# Let's actually look at the distribution of monthly Enrollments by TP
+## This cell prints the summary to a version that can be easily copied into our existing Excel document for wider audience.
+## Only run if necessary.
 
-y = train['Enrolls']
-
-sns.distplot(y)
-
-
-# In[70]:
+#coef_df = negbinomial.summary().as_csv()
+#coef_df.split('\n')
 
 
-# Let's look into a few individual variables
-
-x = train['EnrMo']
-
-sns.jointplot(x, y, kind = "kde")
+# In[64]:
 
 
-# In[77]:
+negbinomial.get_prediction()
 
 
-sns.pairplot(train)
+# In[22]:
 
 
-# In[83]:
+dir(negbinomial)
 
 
-sns.pairplot(train, size=4, hue = "TVFlag")
+# In[23]:
 
 
-# In[81]:
+sns.pairplot(train, vars=["EnrYr", "TPPHospitals", "TrexHospitals", "ActiveHosps", "TPPRatio", "TrexRatio", "Enrolls"])
 
 
-sns.pairplot(train, size=4, hue = "RadioFlag")
+# In[21]:
+
+
+sns.pairplot(train, size=4, hue = "TVFlag", 
+             vars=["TPPHospitals", "TrexHospitals", "ActiveHosps", "TPPRatio", "TrexRatio", "Enrolls"])
+
+
+# In[22]:
+
+
+sns.pairplot(train, size=4, hue = "RadioFlag", 
+            vars=["TPPHospitals", "TrexHospitals", "ActiveHosps", "TPPRatio", "TrexRatio", "Enrolls"])
 
 
 # ## Links I've saved
 # 
 # https://www.statsmodels.org/dev/glm.html -- GLM Page of all these equations, Poisson, Negative Binomial, etc.
-# http://www.karlin.mff.cuni.cz/~pesta/NMFM404/NB.html  -- Explanation of negative binomial regression.
+# http://www.karlin.mff.cuni.cz/~pesta/NMFM404/NB.html  -- Intuition behind negative binomial regression.
 # 
